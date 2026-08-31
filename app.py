@@ -3,6 +3,9 @@ import json
 import hashlib
 import urllib.parse
 import base64
+import http.server
+import threading
+import os
 from datetime import datetime
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
@@ -31,7 +34,7 @@ except ImportError:
 
 # ========== MÃ HÓA ==========
 AeSkEy = b'Yg&tc%DEuh6%Zc^8'
-AeSiV  = b'6oyZDr22E3ychjM%'
+AeSiV = b'6oyZDr22E3ychjM%'
 
 def enc(d):
     return AES.new(AeSkEy, AES.MODE_CBC, AeSiV).encrypt(pad(d, 16))
@@ -51,7 +54,6 @@ def convert_seconds(s):
     m, s = divmod(m, 60)
     return f"{d} Day {h} Hour {m} Min {s} Sec"
 
-# ----- THÔNG TIN PLAYER & BIND -----
 def get_player_info(access_token):
     try:
         player_url = f"https://api-otrss.garena.com/support/callback/?access_token={access_token}"
@@ -113,7 +115,8 @@ def get_bind_info_text(access_token):
     except Exception as e:
         output += f"❌ Lỗi: {str(e)}\n"
     return output
-    # ----- CÁC HÀM GỌI API -----
+
+# ----- API CALLS -----
 def send_otp(access_token, email):
     url = "https://100067.connect.garena.com/game/account_security/bind:send_otp"
     headers = {"User-Agent": "GarenaMSDK/4.0.30", "Content-Type": "application/x-www-form-urlencoded"}
@@ -220,7 +223,8 @@ def get_platform_binds(access_token):
             return None, None
     except:
         return None, None
-        # ----- LỊCH SỬ ĐĂNG NHẬP -----
+
+# ----- LỊCH SỬ ĐĂNG NHẬP -----
 def get_login_history(jwt_token):
     output = ""
     try:
@@ -403,6 +407,7 @@ def get_jwt_from_access_token(access_token):
         except:
             continue
     return None
+
 # ========== BOT TELEGRAM ==========
 TOKEN, EMAIL, OTP, SEC_CODE, NEW_EMAIL, OTP_NEW = range(6)
 
@@ -414,8 +419,7 @@ ACTION_CANCEL = 'cancel'
 ACTION_HISTORY = 'history'
 ACTION_BOUND = 'bound'
 
-# ID nhóm bắt buộc (sửa lại cho đúng)
-REQUIRED_GROUP_ID = -1004367092558  # ← ID nhóm của bạn (có dấu -)
+REQUIRED_GROUP_ID = -1004367092558
 GROUP_LINK = "https://t.me/+eoDrvoD7QElkYmQ1"
 BOT_USERNAME = "Checkmailttoanbot"
 
@@ -440,7 +444,6 @@ def only_private_keyboard():
         [InlineKeyboardButton("💬 Nhắn riêng với bot", url=f"https://t.me/{BOT_USERNAME}")]
     ])
 
-# ========== CÁC HÀNH ĐỘNG ==========
 async def reload_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -989,10 +992,28 @@ async def id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, parse_mode='Markdown')
 
 async def group_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    return  # Bỏ qua tin nhắn thường trong nhóm
+    return
+
+# ========== WEB SERVER GIỮ BOT SỐNG ==========
+PORT = int(os.environ.get("PORT", 10000))
+
+class SimpleHandler(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Bot is running and alive!")
+
+def run_web_server():
+    server = http.server.HTTPServer(("0.0.0.0", PORT), SimpleHandler)
+    server.serve_forever()
 
 # ========== MAIN ==========
-def main():
+async def main():
+    # Khởi chạy web server trong thread riêng
+    thread = threading.Thread(target=run_web_server, daemon=True)
+    thread.start()
+
     application = Application.builder().token("8312271055:AAH7GAWDmhWKPWxEMz16Y6fjjbCTC4a75B8").build()
 
     conv_handler = ConversationHandler(
@@ -1020,7 +1041,7 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.GROUP, group_message_handler))
     application.add_handler(conv_handler)
 
-    application.run_polling()
+    await application.run_polling()
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
